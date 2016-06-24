@@ -1,7 +1,8 @@
-// Meatbag
+// Meatbag //<>// //<>// //<>// //<>// //<>//
 // for Amy Golden
 
 int[] active = new int[16];
+int[] blink = new int[16];
 
 import oscP5.*;
 import netP5.*;
@@ -14,11 +15,14 @@ NetAddress myRemoteLocation;
 
 float overall = 0.90;
 float scale = 1.0;
-float aspect, xShake, yShake;
+float aspect;
+
+float xShake, yShake;
 float xSharp, ySharp;
 int index = 0;
 int stroke = 15;
 int copies = 1;
+int loops = 1;
 int NUM_PHOTOS;
 
 PImage[] photos;
@@ -37,10 +41,12 @@ PShader hsv;
 boolean blank = false;
 boolean load = false;
 boolean webcam = false;
+
+// copy stuff
+boolean two = false;
 boolean four = false;
 boolean nine = false;
 boolean sixteen = false;
-boolean sixtyfour = false;
 
 boolean bleachActive = true;
 boolean grainActive = true;
@@ -56,11 +62,10 @@ void setup() {
     exit();
   } else {
     cam = new Capture(this, cameras[0]);
-    cam.start();
   }  
 
   //fullScreen(P3D);
-  size(700, 700, P3D);
+  size(750, 750, P3D);
   noCursor();
 
   strokeWeight(stroke);
@@ -98,21 +103,25 @@ void setup() {
 void draw() {
   background(0);
 
+  if (two) {
+    copies = 2;
+    scale = 0.5;
+    loops = 2;
+  }
   if (four) {
     copies = 4;
     scale = 0.5;
+    loops = 2;
   }
   if (nine) {
     copies = 9;
     scale = 0.33;
+    loops = 3;
   }
   if (sixteen) { 
     copies = 16;
     scale = 0.25;
-  }
-  if (sixtyfour) {
-    copies = 64;
-    scale = 0.125;
+    loops = 4;
   }
 
   if (webcam) {
@@ -129,15 +138,18 @@ void draw() {
     rect(width * 0.5, height * 0.5, width, height);
   } else {
     int counter = 0;
-    for (int i = 0; i < sqrt(copies); i++) {
-      for (int j = 0; j < sqrt(copies); j++) { 
-        if (active[counter] == 1) {
+    for (int i = 0; i < loops; i++) {
+      for (int j = 0; j < loops; j++) {
+        if (active[counter] == 1 && blink[counter] == 1) {
           pushMatrix();
-          translate(i * width + random(-xShake, xShake), j * height + random(-yShake, yShake));
 
+          if (!two) translate(i * width + random(-xShake, xShake), j * height + random(-yShake, yShake));
+          else if (two) translate(i * width + random(-xShake, xShake), height * 0.5 + random(-yShake, yShake));
+          println(i);
           if (webcam) {
             aspect = float(cam.height)/cam.width;
             image(cam, height * 0.5, width * 0.5, height * overall, height * aspect * overall);
+            //set(height * 0.5, width * 0.5, height * overall, height * aspect * overall, cam);
             noFill();
             blurryRectangle(height * overall, height * aspect * overall);
           } else if (load) {
@@ -180,8 +192,10 @@ void blurryRectangle(float w, float h) {
 void oscEvent(OscMessage msg) {
   if (msg.checkAddrPattern("/webcam") == true) {
     if (msg.get(0).intValue() == 1) { 
+      cam.start();
       webcam = true;
     } else if (msg.get(0).intValue() == 0) {
+      cam.stop();
       webcam = false;
     }
   }
@@ -189,7 +203,7 @@ void oscEvent(OscMessage msg) {
     xShake = msg.get(0).floatValue();
   }
   if (msg.checkAddrPattern("/yShake") == true) {
-    yShake = msg.get(0).floatValue();
+    yShake = msg.get(0).floatValue(); //<>//
   }
   if (msg.checkAddrPattern("/xSharp") == true) {
     xSharp = msg.get(0).floatValue();
@@ -205,6 +219,11 @@ void oscEvent(OscMessage msg) {
   }
   // copies
   if (msg.checkAddrPattern("/copies") == true) { 
+    if (msg.get(0).intValue() == 2) {
+      two = true;
+    } else {
+      two = false;
+    }
     if (msg.get(0).intValue() == 4) {
       four = true;
     } else {
@@ -227,6 +246,9 @@ void oscEvent(OscMessage msg) {
     } else if (msg.get(0).intValue() == 0) {
       blank = false;
     }
+  }
+  if (msg.checkAddrPattern("/blink") == true) {
+    blink[msg.get(0).intValue()] = msg.get(1).intValue();
   }
   if (msg.checkAddrPattern("/NUM_PHOTOS") == true) {
     NUM_PHOTOS = msg.get(0).intValue();

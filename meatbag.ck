@@ -10,21 +10,27 @@ NanoKontrol2 nano;
  @=> string filenames[];
 
 // sound stuff
-5 => int NUM_SLIDES;
 SndBuf forward[5];
 SndBuf backward[5];
-SndBuf carouselNoise => ADSR env => dac;
+SndBuf carouselNoise => dac;
+
+// for testing
+carouselNoise.gain(0.0);
 
 // very high sine tone
-SinOsc NTSC => ADSR NTSCenv => dac;
-NTSC.freq(15750);
-NTSC.gain(0.0080);
-NTSCenv.set(4::ms, 0::ms, 1.0, 4::ms);
+SinOsc NTSC[9];
+ADSR NTSCenv[9];
 
-env.set(10::ms, 0::ms, 1.0, 10::ms);
-env.keyOn();
+for (int i; i < NTSC.size(); i++) {
+    NTSC[i] => NTSCenv[i] => dac;
+    NTSC[i].freq(Math.random2f(1560, 1580));
+    NTSC[i].gain(0.01);
+    NTSCenv[i].set(4::ms, 0::ms, 1.0, 4::ms);
+}
 
-for (int i; i < NUM_SLIDES; i++) {
+// adc => Gain mic => dac;
+
+for (int i; i < 5; i++) {
     forward[i] => dac;
     backward[i] => dac;
 
@@ -33,17 +39,30 @@ for (int i; i < NUM_SLIDES; i++) {
 
     forward[i].pos(forward[i].samples());
     backward[i].pos(backward[i].samples());
+
+    forward[i].gain(0.5);
+    backward[i].gain(0.5);
 }
 
 me.dir() + "audio/carousel-noise.wav" => carouselNoise.read;
-
 carouselNoise.pos(carouselNoise.samples());
 
 // variables
-dur preload;
-float blank;
-int run, loaded, index, webcam, firstSlide, secondSlide, thirdSlide;
-float xShake, yShake;
+int blink[16];
+int active[16];
+float xShake, yShake, randomSpeed, blank;
+
+// about the time so the picture lines up with the next slide sample
+450::ms => dur preload;
+
+// which png (just one)
+int index;
+
+// booleans
+int run, loaded, webcam;
+
+// slides
+int firstSlide, secondSlide, thirdSlide, fourthSlide;
 
 // latches
 int forwardLatch, recordLatch;
@@ -76,41 +95,43 @@ fun void oscSendIntString(string addr, int val1, string val2) {
 }
 
 fun void activateCopies(int idx, int val, float speed) {
-    450::ms => now;
-
     // randomizes slide sound
     if (val) {
-        Math.random2(0, forward.size() - 1) => int which;
+        if (!webcam) {
+            Math.random2(0, forward.size() - 1) => int which;
 
-        env.keyOff();
-        forward[which].pos(0);
-        // forward[which].rate(1.0/speed);
-        speed * (forward[which].samples()::samp - preload) => now;
+            //env.keyOff();
+            forward[which].pos(0);
+            // forward[which].rate(1.0/speed);
+            speed * (forward[which].samples()::samp - preload) => now;
+        }
 
         speed * preload => now;
-
-        env.keyOn();
     }
 
     oscSendInts("/active", idx, val);
 }
 
 // blinking
-fun void faultyCapacitor() {
+fun void faultyCapacitor(int idx) {
     0.05::second => dur flash;
     while (true) {
         if (blank > 0.0 && !webcam) {
-            oscSendInt("/blank", 0);
-            NTSCenv.keyOn();
+            oscSendInts("/blink", idx, 1);
+            if (active[idx]) {
+                NTSCenv[idx].keyOn();
+            }
             flash => now;
 
-            oscSendInt("/blank", 1);
-            NTSCenv.keyOff();
-            ((blank * blank) * 3)::second => now;
+            oscSendInts("/blink", idx, 0);
+            NTSCenv[idx].keyOff();
+            ((blank * blank) * Math.random2f(2.5, 3.0))::second => now;
         }
         else if (!webcam) {
-            oscSendInt("/blank", 0);
-            NTSCenv.keyOn();
+            oscSendInts("/blink", idx, 1);
+            if (active[idx]) {
+                NTSCenv[idx].keyOn();
+            }
             1::ms => now;
         }
         else {
@@ -138,73 +159,96 @@ fun void startProjector() {
 }
 
 fun void slideOne() {
+    spork ~ faultyCapacitor(0);
+
     (index + 1) % filenames.size() => index;
-    450::ms => preload;
 
     oscSendInt("/index", 0);
     oscSendInts("/active", 0, 1);
+    1 => active[0];
 
     // randomizes slide sound
     Math.random2(0, forward.size() - 1) => int which;
 
-    env.keyOff();
     forward[which].pos(0);
     forward[which].samples()::samp - preload => now;
 
     oscSendInt("/index", index);
 
     preload => now;
-    env.keyOn();
 }
 
 fun void slideTwo() {
-    oscSendInt("/copies", 4);
-    oscSendInts("/active", 0, 1);
+    0.05::second => now;
+    oscSendInt("/copies", 2);
 
-    450::ms => preload;
+    oscSendInts("/active", 1, 1);
 
-    oscSendInt("/index", 0);
-
-    // randomizes slide sound
-    Math.random2(0, forward.size() - 1) => int which;
-
-    env.keyOff();
-    forward[which].pos(0);
-    forward[which].samples()::samp - preload => now;
-
-    oscSendInt("/index", index);
+    // oscSendInt("/index", 0);
+    oscSendInt("/blank", 1);
+    forward[1].pos(0);
+    forward[1].samples()::samp - preload => now;
+    oscSendInt("/blank", 0);
 
     preload => now;
-    env.keyOn();
+    // oscSendInt("/index", index);
 
-    Math.random2f(0.1, 0.25) => float speed;
-    activateCopies(3, 1, speed);
-    Math.random2f(0.1, 0.25) => speed;
-    activateCopies(1, 1, speed);
-    Math.random2f(0.1, 0.25) => speed;
-    activateCopies(2, 1, speed);
+    spork ~ faultyCapacitor(1);
+    0.05::second => now;
 }
 
 fun void slideThree() {
+    oscSendInt("/blank", 1);
+    0.05::second => now;
+
+    oscSendInt("/copies", 4);
+
+    // clear all
+    for (int i; i < 4; i++) {
+        oscSendInts("/active", i, 0);
+        if (i > 1) {
+            spork ~ faultyCapacitor(i);
+        }
+    }
+
+    0.05::second => now;
+    oscSendInt("/blank", 0);
+
+    spork ~ randomSlides(3, 0.9, 1.0);
+}
+
+fun void slideFour() {
     oscSendInt("/copies", 9);
 
+    // clear all
     for (int i; i < 9; i++) {
         oscSendInts("/active", i, 0);
     }
 
     oscSendInt("/index", 0);
+    forward[0].samples()::samp - preload => now;
+    oscSendInt("/index", index);
+    preload => now;
 
-    spork ~ randomNine();
+    spork ~ randomSlides(8, 0.1, 0.2);
 }
 
-fun void randomNine() {
+fun void randomSlides(int num, float min, float max) {
+    int old;
     while (true) {
-        Math.random2(0, 8) => int which;
-        Math.random2f(0.025, 0.05) => float speed;
+        Math.random2(0, num) => int which;
+        if (which == old) {
+            (which + 1) % num => which;
+        }
+        Math.random2f(randomSpeed, randomSpeed + 0.1) => float speed;
 
-        activateCopies(which, 0, speed);
-        oscSendInt("/index", index);
         activateCopies(which, 1, speed);
+        1 => active[which];
+        oscSendInt("/index", index);
+        speed::second => now;
+        activateCopies(which, 0, speed);
+        0 => active[which];
+        which => old;
     }
 }
 
@@ -241,6 +285,7 @@ fun void webcamInterruption() {
 fun void nanoKontrols() {
     nano.slider[0]/127.0 * -1.0 + 1.0 => blank;
     nano.play => run;
+    nano.slider[3]/127.0 * -1.0 + 1.0 => randomSpeed;
     oscSendFloat("/xShake", nano.slider[4]/127.0 * 25.0);
     oscSendFloat("/yShake", nano.slider[5]/127.0 * 25.0);
     oscSendFloat("/xSharp", nano.slider[6]/127.0 * 0.2);
@@ -262,17 +307,22 @@ fun void projectorLogic() {
     else if (loaded) {
         if (nano.forward && !forwardLatch) {
             if (!firstSlide) {
-                spork ~ faultyCapacitor();
                 1 => firstSlide;
                 slideOne();
             }
             else if (!secondSlide) {
+                1 => forwardLatch;
                 1 => secondSlide;
                 slideTwo();
             }
             else if (!thirdSlide) {
                 1 => forwardLatch;
+                1 => thirdSlide;
                 slideThree();
+            }
+            else if (!fourthSlide) {
+                1 => forwardLatch;
+                slideFour();
             }
         }
         else if (!nano.forward && forwardLatch) {
