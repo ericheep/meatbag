@@ -6,7 +6,7 @@ out.dest("127.0.0.1", 12001);
 
 NanoKontrol2 nano;
 
-["0-black.png", "0-circle.png"]
+["0-black.png", "0-circle.png", "0-test-card.jpg"]
  @=> string filenames[];
 
 // sound stuff
@@ -14,16 +14,23 @@ SndBuf forward[5];
 SndBuf backward[5];
 SndBuf carouselNoise => dac;
 
+carouselNoise => Gain mod => SinOsc car => dac;
+car.sync(2);
+car.gain(0.0);
+car.freq(40.0);
+
 // for testing
 carouselNoise.gain(0.0);
 
 // very high sine tone
-SinOsc NTSC[9];
-ADSR NTSCenv[9];
+SinOsc NTSC[64];
+ADSR NTSCenv[64];
 
 for (int i; i < NTSC.size(); i++) {
-    NTSC[i] => NTSCenv[i] => dac;
-    NTSC[i].freq(Math.random2f(1560, 1580));
+    if (i < 9) {
+        NTSC[i] => NTSCenv[i] => dac;
+    }
+    NTSC[i].freq(Math.random2f(15600, 15800));
     NTSC[i].gain(0.01);
     NTSCenv[i].set(4::ms, 0::ms, 1.0, 4::ms);
 }
@@ -48,9 +55,11 @@ me.dir() + "audio/carousel-noise.wav" => carouselNoise.read;
 carouselNoise.pos(carouselNoise.samples());
 
 // variables
-int blink[16];
-int active[16];
-float xShake, yShake, randomSpeed, blank;
+int blink[64];
+int active[64];
+float xShake, yShake, xSharp, ySharp;
+float randomSpeed, blank;
+float faultyMax;
 
 // about the time so the picture lines up with the next slide sample
 450::ms => dur preload;
@@ -62,10 +71,11 @@ int index;
 int run, loaded, webcam;
 
 // slides
-int firstSlide, secondSlide, thirdSlide, fourthSlide;
+int firstSlide, secondSlide, thirdSlide, fourthSlide, fifthSlide, sixthSlide;
+int randomMax;
 
 // latches
-int forwardLatch, recordLatch;
+int forwardLatch, recordLatch, recordToggle;
 
 // osc functions
 fun void oscSendInt(string addr, int val) {
@@ -100,9 +110,7 @@ fun void activateCopies(int idx, int val, float speed) {
         if (!webcam) {
             Math.random2(0, forward.size() - 1) => int which;
 
-            //env.keyOff();
             forward[which].pos(0);
-            // forward[which].rate(1.0/speed);
             speed * (forward[which].samples()::samp - preload) => now;
         }
 
@@ -131,6 +139,9 @@ fun void faultyCapacitor(int idx) {
             oscSendInts("/blink", idx, 1);
             if (active[idx]) {
                 NTSCenv[idx].keyOn();
+            }
+            else if (!active[idx]) {
+                NTSCenv[idx].keyOff();
             }
             1::ms => now;
         }
@@ -179,21 +190,29 @@ fun void slideOne() {
 }
 
 fun void slideTwo() {
-    0.05::second => now;
+    0 => active[0];
+    0 => active[2];
+
     oscSendInt("/copies", 2);
 
-    oscSendInts("/active", 1, 1);
+    oscSendInts("/active", 0, 0);
+    oscSendInts("/active", 2, 0);
+    0.05::second => now;
 
-    // oscSendInt("/index", 0);
+
     oscSendInt("/blank", 1);
     forward[1].pos(0);
     forward[1].samples()::samp - preload => now;
     oscSendInt("/blank", 0);
 
     preload => now;
-    // oscSendInt("/index", index);
 
-    spork ~ faultyCapacitor(1);
+    1 => active[0];
+    1 => active[2];
+    oscSendInts("/active", 0, 1);
+    oscSendInts("/active", 2, 1);
+
+    spork ~ faultyCapacitor(2);
     0.05::second => now;
 }
 
@@ -203,21 +222,30 @@ fun void slideThree() {
 
     oscSendInt("/copies", 4);
 
+    spork ~ faultyCapacitor(1);
+    spork ~ faultyCapacitor(3);
+
     // clear all
     for (int i; i < 4; i++) {
         oscSendInts("/active", i, 0);
-        if (i > 1) {
-            spork ~ faultyCapacitor(i);
-        }
     }
+
+    0 => active[0];
+    0 => active[2];
 
     0.05::second => now;
     oscSendInt("/blank", 0);
 
-    spork ~ randomSlides(3, 0.9, 1.0);
+    3 => randomMax;
+    spork ~ randomSlides();
 }
 
 fun void slideFour() {
+    0 => active[0];
+    0 => active[1];
+    0 => active[2];
+    0 => active[3];
+
     oscSendInt("/copies", 9);
 
     // clear all
@@ -225,27 +253,76 @@ fun void slideFour() {
         oscSendInts("/active", i, 0);
     }
 
-    oscSendInt("/index", 0);
-    forward[0].samples()::samp - preload => now;
-    oscSendInt("/index", index);
-    preload => now;
+    // other stuff
+    spork ~ faultyCapacitor(4);
+    spork ~ faultyCapacitor(5);
+    spork ~ faultyCapacitor(6);
+    spork ~ faultyCapacitor(7);
+    spork ~ faultyCapacitor(8);
 
-    spork ~ randomSlides(8, 0.1, 0.2);
+
+    oscSendInt("/blank", 1);
+    //forward[0].samples()::samp - preload => now;
+    10::ms => now;
+    oscSendInt("/blank", 0);
+    10::ms => now;
+    8 => randomMax;
 }
 
-fun void randomSlides(int num, float min, float max) {
-    int old;
-    while (true) {
-        Math.random2(0, num) => int which;
+fun void slideFive() {
+    10 => randomMax;
+    0.5 => faultyMax;
+    for (int i; i < 64; i++) {
+        1 => active[i];
+        if (i > 8) {
+            NTSC[i] => NTSCenv[i] => dac;
+            spork ~ faultyCapacitor(i);
+        }
+    }
+
+    8::second => now;
+
+    oscSendInt("/copies", 64);
+    for (int i; i < 64; i++) {
+        oscSendInts("/active", i, 1);
+        if (i > 15) {
+            spork ~ faultyCapacitor(i);
+        }
+    }
+}
+
+fun void slideSix() {
+    // randomizes slide sound
+    Math.random2(0, forward.size() - 1) => int which;
+
+    // turn off TVs
+    for (int i; i < NTSC.size(); i++) {
+        NTSC[i].gain(0.0);
+    }
+
+    oscSendInt("/blank", 1);
+    oscSendInts("/active", 0, 1);
+    0 => forward[which].pos;
+    forward[which].samples()::samp - preload => now;
+    10 => randomMax;
+    oscSendInt("/blank", 0);
+    oscSendInt("/copies", 1);
+    oscSendInt("/index", 2);
+    preload => now;
+}
+
+fun void randomSlides() {
+    int old, multiples;
+    while (randomMax < 9) {
+        Math.random2(0, randomMax) => int which;
         if (which == old) {
-            (which + 1) % num => which;
+            (which + 1) % randomMax => which;
         }
         Math.random2f(randomSpeed, randomSpeed + 0.1) => float speed;
 
         activateCopies(which, 1, speed);
         1 => active[which];
-        oscSendInt("/index", index);
-        speed::second => now;
+        speed * 2.0::second => now;
         activateCopies(which, 0, speed);
         0 => active[which];
         which => old;
@@ -258,14 +335,14 @@ fun void webcamInterruption() {
     for (1.0 => float i; i > 0.0; i - 0.01 => i) {
         carouselNoise.rate(i);
         carouselNoise.gain(i);
-        0.01::second => now;
+        0.005::second => now;
     }
 
     oscSendInt("/blank", 0);
     oscSendInt("/webcam", 1);
 
     // holds while record button is down
-    while (recordLatch) {
+    while (recordToggle) {
         1::ms => now;
     }
 
@@ -275,7 +352,7 @@ fun void webcamInterruption() {
     for (float i; i < 1.0; i + 0.01 => i) {
         carouselNoise.rate(i);
         carouselNoise.gain(i);
-        0.01::second => now;
+        0.005::second => now;
     }
     0 => webcam;
     oscSendInt("/blank", 0);
@@ -283,14 +360,59 @@ fun void webcamInterruption() {
 
 // nanoKontrols
 fun void nanoKontrols() {
-    nano.slider[0]/127.0 * -1.0 + 1.0 => blank;
+    (nano.slider[0]/127.0 * -1.0 + 1.0) + faultyMax => blank;
     nano.play => run;
     nano.slider[3]/127.0 * -1.0 + 1.0 => randomSpeed;
-    oscSendFloat("/xShake", nano.slider[4]/127.0 * 25.0);
-    oscSendFloat("/yShake", nano.slider[5]/127.0 * 25.0);
-    oscSendFloat("/xSharp", nano.slider[6]/127.0 * 0.2);
-    oscSendFloat("/ySharp", nano.slider[7]/127.0 * 0.2);
+
+    nano.slider[4]/127.0 => xShake;
+    oscSendFloat("/xShake", xShake * 25.0);
+    nano.slider[5]/127.0 => yShake;
+    oscSendFloat("/yShake", yShake * 25.0);
+    nano.slider[6]/127.0 => xSharp;
+    oscSendFloat("/xSharp", xSharp * 0.2);
+    nano.slider[7]/127.0 => ySharp;
+    oscSendFloat("/ySharp", ySharp * 0.2);
+    if (nano.stop > 0) {
+        spork ~ stop();
+    }
 }
+
+fun void wavyTape() {
+    float yAdd, xAdd, inc;
+    while (true) {
+        xShake * 0.6 => xAdd;
+        yShake * 0.6 => yAdd;
+        (xAdd + yAdd + inc) % (pi * 2) => inc;
+        if (xSharp != 0.0 || ySharp != 0.0) {
+            carouselNoise.rate(Math.sin(inc) * xShake + 1.0);
+        }
+        Math.random2f(0.04, 0.05)::ms => now;
+    }
+}
+
+fun void tapeNoise() {
+    while (true) {
+        (xSharp * 20000) + 10000 => mod.gain;
+        (ySharp * 0.1) => car.gain;
+
+        10::ms => now;
+    }
+}
+
+fun void stop() {
+    oscSendInts("/active", 0, 0);
+    for (1.0 => float i; i > 0.0; i - 0.01 => i) {
+        carouselNoise.rate(i);
+        0.04::second => now;
+    }
+    for (1.0 => float i; i > 0.0; i - 0.01 => i) {
+        carouselNoise.gain(i);
+        0.04::second => now;
+    }
+}
+
+spork ~ wavyTape();
+spork ~ tapeNoise();
 
 // main program
 while (true) {
@@ -322,15 +444,29 @@ fun void projectorLogic() {
             }
             else if (!fourthSlide) {
                 1 => forwardLatch;
+                1 => fourthSlide;
                 slideFour();
+            }
+            else if (!fifthSlide) {
+                1 => forwardLatch;
+                1 => fifthSlide;
+                slideFive();
+            }
+            else if (!sixthSlide) {
+                1 => forwardLatch;
+                1 => sixthSlide;
+                slideSix();
             }
         }
         else if (!nano.forward && forwardLatch) {
             0 => forwardLatch;
         }
         if (nano.record && !recordLatch) {
+            (recordToggle + 1) % 2 => recordToggle;
             1 => recordLatch;
-            spork ~ webcamInterruption();
+            if (recordToggle == 1) {
+                spork ~ webcamInterruption();
+            }
         }
         else if (!nano.record && recordLatch) {
             0 => recordLatch;

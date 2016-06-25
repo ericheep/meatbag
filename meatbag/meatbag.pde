@@ -1,8 +1,8 @@
-// Meatbag //<>// //<>// //<>// //<>// //<>//
+// Meatbag //<>// //<>// //<>// //<>// //<>// //<>//
 // for Amy Golden
 
-int[] active = new int[16];
-int[] blink = new int[16];
+int[] active = new int[64];
+int[] blink = new int[64];
 
 import oscP5.*;
 import netP5.*;
@@ -43,10 +43,12 @@ boolean load = false;
 boolean webcam = false;
 
 // copy stuff
+boolean one = true;
 boolean two = false;
 boolean four = false;
 boolean nine = false;
 boolean sixteen = false;
+boolean sixtyfour = false;
 
 boolean bleachActive = true;
 boolean grainActive = true;
@@ -64,8 +66,8 @@ void setup() {
     cam = new Capture(this, cameras[0]);
   }  
 
-  //fullScreen(P3D);
-  size(750, 750, P3D);
+  fullScreen(P3D);
+  //size(750, 750, P3D);
   noCursor();
 
   strokeWeight(stroke);
@@ -103,6 +105,11 @@ void setup() {
 void draw() {
   background(0);
 
+  if (one) {
+    copies = 1;
+    scale = 1.0;
+    loops = 1;
+  }
   if (two) {
     copies = 2;
     scale = 0.5;
@@ -122,6 +129,11 @@ void draw() {
     copies = 16;
     scale = 0.25;
     loops = 4;
+  }
+  if (sixtyfour) {
+     copies = 64;
+     scale = 0.125;
+     loops = 8;
   }
 
   if (webcam) {
@@ -143,12 +155,16 @@ void draw() {
         if (active[counter] == 1 && blink[counter] == 1) {
           pushMatrix();
 
-          if (!two) translate(i * width + random(-xShake, xShake), j * height + random(-yShake, yShake));
-          else if (two) translate(i * width + random(-xShake, xShake), height * 0.5 + random(-yShake, yShake));
-          println(i);
+          if (!two) {
+            translate(i * width + random(-xShake, xShake), j * height + random(-yShake, yShake));
+          } else if (two) { 
+            translate(i * width + random(-xShake, xShake), height * 0.5 + random(-yShake, yShake));
+          }
+
           if (webcam) {
             aspect = float(cam.height)/cam.width;
-            image(cam, height * 0.5, width * 0.5, height * overall, height * aspect * overall);
+            //image(cam, height * 0.5, width * 0.5, height * overall, height * aspect * overall);
+            image(cam, width * 0.5, height * 0.5, height * overall, height * aspect * overall);
             //set(height * 0.5, width * 0.5, height * overall, height * aspect * overall, cam);
             noFill();
             blurryRectangle(height * overall, height * aspect * overall);
@@ -203,7 +219,7 @@ void oscEvent(OscMessage msg) {
     xShake = msg.get(0).floatValue();
   }
   if (msg.checkAddrPattern("/yShake") == true) {
-    yShake = msg.get(0).floatValue(); //<>//
+    yShake = msg.get(0).floatValue();
   }
   if (msg.checkAddrPattern("/xSharp") == true) {
     xSharp = msg.get(0).floatValue();
@@ -219,6 +235,11 @@ void oscEvent(OscMessage msg) {
   }
   // copies
   if (msg.checkAddrPattern("/copies") == true) { 
+    if (msg.get(0).intValue() == 1) {
+      one = true;
+    } else {
+      one = false;
+    }
     if (msg.get(0).intValue() == 2) {
       two = true;
     } else {
@@ -238,6 +259,11 @@ void oscEvent(OscMessage msg) {
       sixteen = true;
     } else {
       sixteen = false;
+    }
+    if (msg.get(0).intValue() == 64) {
+      sixtyfour = true;
+    } else {
+      sixtyfour = false;
     }
   }
   if (msg.checkAddrPattern("/blank") == true) {
